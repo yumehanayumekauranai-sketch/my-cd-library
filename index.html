@@ -15,13 +15,32 @@ function persist(){localStorage.setItem("cdLibraryV3",JSON.stringify(db));render
 function render(){let q=$("#search").value.toLowerCase(),a=db.filter(x=>[x.title,x.artist,...x.tracks].join(" ").toLowerCase().includes(q));$("#stats").textContent=`${new Set(db.map(x=>x.artist)).size}組・${db.length}枚・${db.reduce((n,x)=>n+x.tracks.length,0)}曲`;
 if(mode==="track"){let t=[];a.forEach(x=>x.tracks.forEach(y=>t.push(`<div class="card"><b>${esc(y)}</b><div>${esc(x.artist)}</div><div class="muted">収録CD：${esc(x.title)}</div></div>`)));$("#list").innerHTML=t.join("")||'<div class="card">該当なし</div>';return}
 if(mode==="artist"){let n=[...new Set(a.map(x=>x.artist))];$("#list").innerHTML=n.map(x=>`<div class="card"><b>${esc(x)}</b><div class="muted">${a.filter(y=>y.artist===x).length}枚</div></div>`).join("")||'<div class="card">該当なし</div>';return}
-$("#list").innerHTML=a.map(x=>`<div class="card album">${x.cover?`<img class="cover" src="${esc(x.cover)}">`:'<div class="cover"></div>'}<div><b>${esc(x.title)}</b><div>${esc(x.artist)}</div><div class="muted">${esc(x.date)} ${esc(x.catalog)}</div><ol class="tracks">${x.tracks.map(y=>`<li>${esc(y)}</li>`).join("")}</ol><button class="btn" onclick="del('${x.id}')">削除</button></div></div>`).join("")||'<div class="card"><b>まだCDが登録されていません</b></div>'}
+$("#list").innerHTML=a.map(x=>`<div class="card album">${x.cover?`<img class="cover" loading="lazy" decoding="async" src="${esc(x.cover)}">`:'<div class="cover"></div>'}<div><b>${esc(x.title)}</b><div>${esc(x.artist)}</div><div class="muted">${esc(x.date)} ${esc(x.catalog)}</div><ol class="tracks">${x.tracks.map(y=>`<li>${esc(y)}</li>`).join("")}</ol><button class="btn" onclick="del('${x.id}')">削除</button></div></div>`).join("")||'<div class="card"><b>まだCDが登録されていません</b></div>'}
 window.del=id=>{if(confirm("削除しますか？")){db=db.filter(x=>x.id!==id);persist()}}
 function fill(d){["title","artist","date","catalog","cover"].forEach(k=>$("#"+k).value=d[k]||"");$("#tracks").value=(d.tracks||[]).join("\n")}
 async function musicbrainz(code){let r=await fetch(`https://musicbrainz.org/ws/2/release/?query=barcode:${code}&fmt=json&limit=1`),j=await r.json();if(!j.releases?.length)return null;let id=j.releases[0].id;await new Promise(r=>setTimeout(r,1100));let d=await fetch(`https://musicbrainz.org/ws/2/release/${id}?inc=recordings+artist-credits+labels&fmt=json`).then(r=>r.json());return{title:d.title,artist:(d["artist-credit"]||[]).map(x=>x.name).join(""),date:d.date||"",catalog:d["label-info"]?.[0]?.["catalog-number"]||"",cover:`https://coverartarchive.org/release/${id}/front-500`,tracks:(d.media||[]).flatMap(m=>(m.tracks||[]).map(t=>t.title))}}
 async function lookup(){let c=$("#barcode").value.replace(/\D/g,"");$("#barcode").value=c;if(!c)return;$("#msg").innerHTML='<div class="notice">検索中…</div>';try{let d=await musicbrainz(c)||known[c];if(d){fill(d);$("#msg").innerHTML='<div class="notice">見つかりました。内容を確認して登録してください。</div>'}else $("#msg").innerHTML='<div class="notice error">MusicBrainzでは見つかりませんでした。手入力でも登録できます。</div>'}catch(e){let d=known[c];if(d){fill(d);$("#msg").innerHTML='<div class="notice">情報を取得しました。</div>'}else $("#msg").innerHTML='<div class="notice error">通信エラーです。</div>'}}
 function stop(){try{ctl?.stop()}catch(e){}ctl=null;$("#video").srcObject?.getTracks().forEach(t=>t.stop());$("#scanner").classList.add("hidden")}
-async function scan(){if(!navigator.mediaDevices?.getUserMedia){alert("Safariで開いてください");return}$("#scanner").classList.remove("hidden");try{let r=new ZXingBrowser.BrowserMultiFormatReader();ctl=await r.decodeFromConstraints({video:{facingMode:{ideal:"environment"}},audio:false},$("#video"),(res)=>{if(res){let c=res.getText().replace(/\D/g,"");if(c.length>=8){$("#barcode").value=c;stop();lookup()}}})}catch(e){stop();alert("カメラを開始できません。Safariのカメラ許可を確認してください。")}}
+async function scan(){if(!navigator.mediaDevices?.getUserMedia){alert("Safariで開いてください");return}$("#scanner").classList.remove("hidden");try{
+let r=new ZXingBrowser.BrowserMultiFormatReader();
+ctl=await r.decodeFromConstraints({video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},audio:false},$("#video"),async(res)=>{
+ if(res){
+  let c=res.getText().replace(/\D/g,"");
+  if(c.length===13){$("#barcode").value=c;stop();lookup()}
+ }
+});
+try{
+ let stream=$("#video").srcObject,track=stream&&stream.getVideoTracks()[0];
+ let caps=track&&track.getCapabilities?track.getCapabilities():{};
+ let advanced={};
+ if(caps.focusMode&&caps.focusMode.includes("continuous"))advanced.focusMode="continuous";
+ if(caps.zoom){
+   let min=caps.zoom.min||1,max=caps.zoom.max||1;
+   advanced.zoom=Math.min(max,Math.max(min,1.5));
+ }
+ if(Object.keys(advanced).length)await track.applyConstraints({advanced:[advanced]});
+}catch(e){}
+}catch(e){stop();alert("カメラを開始できません。Safariのカメラ許可を確認してください。")}}
 $("#open").onclick=()=>{$("#form").classList.remove("hidden");$("#form").scrollIntoView({behavior:"smooth"})};$("#close").onclick=()=>$("#form").classList.add("hidden");$("#fetch").onclick=lookup;$("#scan").onclick=scan;$("#stop").onclick=stop;
 $("#save").onclick=()=>{if(!$("#title").value.trim())return alert("CDタイトルを入力してください");db.unshift({id:Date.now()+"",barcode:$("#barcode").value,title:$("#title").value,artist:$("#artist").value,date:$("#date").value,catalog:$("#catalog").value,cover:$("#cover").value,tracks:$("#tracks").value.split("\n").map(x=>x.trim()).filter(Boolean)});persist();$("#form").classList.add("hidden");window.scrollTo(0,0)}
 $("#search").oninput=render;document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{mode=b.dataset.m;document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("primary",x===b));render()});render();
