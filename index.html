@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f7f7fb">
+<title>わたしのCDライブラリ</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;color:#202124;background:#f7f7fb}
+*{box-sizing:border-box} body{margin:0} button,input,textarea{font:inherit}
+main{max-width:760px;margin:auto;padding:18px 14px 60px}.head{display:flex;justify-content:space-between;align-items:end;gap:12px}
+h1{font-size:24px;margin:0}.muted{color:#73757a;font-size:13px}.btn{border:0;border-radius:14px;padding:12px 15px;background:#202124;color:white;font-weight:700}
+.search,input,textarea{width:100%;border:1px solid #d8d9df;border-radius:14px;background:white;padding:13px;margin-top:12px;font-size:16px}
+.tabs{display:flex;gap:8px;overflow:auto;margin:14px 0}.tab{white-space:nowrap;border:1px solid #d8d9df;background:white;border-radius:999px;padding:10px 14px}.tab.on{background:#202124;color:white}
+.card{background:white;border:1px solid #e0e1e6;border-radius:18px;padding:15px;margin:10px 0}.row{display:flex;justify-content:space-between;gap:10px;align-items:start}.title{font-weight:800}.small{font-size:13px;color:#73757a}.songs{padding-left:24px;margin-bottom:0}.hide{display:none}.panel{background:#fff;border:1px solid #ddd;border-radius:18px;padding:15px;margin:12px 0}
+label{display:block;font-weight:700;font-size:14px;margin-top:12px}.secondary{background:#eceef2;color:#202124}.danger{background:#fff;color:#b3261e;border:1px solid #e2b8b5}.actions{display:flex;gap:8px;flex-wrap:wrap}.actions button{padding:9px 12px;border-radius:11px}
+.notice{font-size:13px;padding:10px;border-radius:12px;background:#f1f3f4;margin-top:10px}.ok{color:#137333}.err{color:#b3261e}
+</style>
+</head>
+<body><main>
+<div class="head"><div><h1>CDライブラリ</h1><div class="muted"><span id="artistsN">0</span>組・<span id="cdN">0</span>枚・<span id="songN">0</span>曲</div></div><button id="newBtn" class="btn">＋ CDを登録</button></div>
+<input id="search" class="search" type="search" placeholder="曲名・アーティスト・CD名で検索">
+<div class="tabs"><button class="tab on" data-tab="cd">CD一覧</button><button class="tab" data-tab="artist">アーティスト一覧</button><button class="tab" data-tab="song">曲一覧</button></div>
+
+<section id="formBox" class="panel hide">
+<div class="row"><div class="title">CDを登録</div><button id="closeBtn" class="tab">閉じる</button></div>
+<label>JAN / バーコード</label>
+<div class="actions"><input id="barcode" inputmode="numeric" placeholder="例：458032532..."
+style="margin-top:6px;flex:1;min-width:190px"><button id="lookup" class="btn" type="button">自動取得</button></div>
+<div id="msg" class="notice hide"></div>
+<input id="editId" type="hidden">
+<label>CDタイトル</label><input id="album" placeholder="CDタイトル">
+<label>アーティスト</label><input id="artist" placeholder="アーティスト名">
+<label>発売日</label><input id="date" type="date">
+<label>収録曲</label><textarea id="tracks" rows="9" placeholder="1行に1曲"></textarea>
+<button id="save" class="btn" style="width:100%;margin-top:14px">ライブラリに保存</button>
+</section>
+<div id="empty" class="card"><div class="title">まだCDが登録されていません</div><div class="small">「＋ CDを登録」から追加できます。</div></div>
+<div id="list"></div>
+<div class="muted" style="margin-top:20px">登録データはこの端末のブラウザに保存されます。MusicBrainzに該当するバーコードがあれば、タイトル・アーティスト・発売日・収録曲を自動取得します。</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let db=JSON.parse(localStorage.getItem("myCdLibrary")||"[]"), tab="cd";
+const norm=s=>(s||"").normalize("NFKC").toLowerCase();
+const esc=s=>String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function saveDB(){localStorage.setItem("myCdLibrary",JSON.stringify(db))}
+function artistNames(){return [...new Set(db.map(x=>x.artist).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ja"))}
+function stats(){$("artistsN").textContent=artistNames().length;$("cdN").textContent=db.length;$("songN").textContent=db.reduce((n,x)=>n+x.tracks.length,0)}
+function showForm(x=null){$("formBox").classList.remove("hide");$("editId").value=x?.id||"";$("barcode").value=x?.barcode||"";$("album").value=x?.album||"";$("artist").value=x?.artist||"";$("date").value=x?.date||"";$("tracks").value=(x?.tracks||[]).join("\n");$("msg").classList.add("hide");$("barcode").focus()}
+function render(){stats();document.querySelectorAll(".tab[data-tab]").forEach(b=>b.classList.toggle("on",b.dataset.tab===tab));let q=norm($("search").value),out=$("list");out.innerHTML="";let count=0;
+if(tab==="cd"){db.filter(x=>!q||norm(x.album).includes(q)||norm(x.artist).includes(q)||x.tracks.some(t=>norm(t).includes(q))).forEach(x=>{count++;let d=document.createElement("div");d.className="card";d.innerHTML=`<div class="row"><div><div class="title">${esc(x.album)}</div><div>${esc(x.artist)}</div><div class="small">${x.date?"発売日 "+esc(x.date.replaceAll("-",".")):""}${x.barcode?"　JAN "+esc(x.barcode):""}</div></div><div class="actions"><button class="secondary" data-edit="${x.id}">編集</button><button class="danger" data-del="${x.id}">削除</button></div></div><ol class="songs">${x.tracks.map(t=>`<li>${esc(t)}</li>`).join("")}</ol>`;out.appendChild(d)})}
+if(tab==="artist"){artistNames().filter(a=>!q||norm(a).includes(q)||db.filter(x=>x.artist===a).some(x=>norm(x.album).includes(q)||x.tracks.some(t=>norm(t).includes(q)))).forEach(a=>{count++;let cds=db.filter(x=>x.artist===a).sort((a,b)=>(a.date||"9999").localeCompare(b.date||"9999"));let d=document.createElement("details");d.className="card";d.innerHTML=`<summary class="title">${esc(a)} <span class="small">${cds.length}枚</span></summary>${cds.map(x=>`<div class="card"><div class="title">${esc(x.album)}</div><div class="small">${x.date?"発売日 "+esc(x.date.replaceAll("-",".")):""}</div><ol class="songs">${x.tracks.map(t=>`<li>${esc(t)}</li>`).join("")}</ol></div>`).join("")}`;out.appendChild(d)})}
+if(tab==="song"){let arr=[];db.forEach(x=>x.tracks.forEach((t,i)=>{if(!q||norm(t).includes(q)||norm(x.artist).includes(q)||norm(x.album).includes(q))arr.push({t,i:i+1,x})}));arr.sort((a,b)=>a.t.localeCompare(b.t,"ja"));arr.forEach(y=>{count++;let d=document.createElement("div");d.className="card";d.innerHTML=`<div class="title">${esc(y.t)}</div><div class="small">${esc(y.x.artist)} ／ ${esc(y.x.album)} ／ Track ${y.i}</div>`;out.appendChild(d)})}
+$("empty").classList.toggle("hide",db.length>0);if(db.length&&!count)out.innerHTML='<div class="card">該当するデータはありません。</div>'}
+$("newBtn").onclick=()=>showForm();$("closeBtn").onclick=()=>$("formBox").classList.add("hide");$("search").oninput=render;
+document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render()});
+$("lookup").onclick=async()=>{let code=$("barcode").value.replace(/\D/g,""),m=$("msg");m.classList.remove("hide","ok","err");if(!code){m.textContent="JANコードを入力してください。";m.classList.add("err");return}m.textContent="CD情報を検索しています…";
+try{let u="https://musicbrainz.org/ws/2/release/?query=barcode:"+encodeURIComponent(code)+"&fmt=json&limit=10";let a=await fetch(u,{headers:{"Accept":"application/json"}});if(!a.ok)throw Error();let j=await a.json(),rel=(j.releases||[]).find(r=>r.barcode===code)||(j.releases||[])[0];if(!rel){m.textContent="このバーコードのCDが見つかりませんでした。手入力で登録できます。";m.classList.add("err");return}
+let b=await fetch("https://musicbrainz.org/ws/2/release/"+rel.id+"?inc=recordings+artist-credits&fmt=json",{headers:{"Accept":"application/json"}});if(!b.ok)throw Error();let full=await b.json();$("album").value=full.title||rel.title||"";$("artist").value=(full["artist-credit"]||rel["artist-credit"]||[]).map(x=>x.name||x.artist?.name).filter(Boolean).join(" & ");$("date").value=/^\d{4}-\d{2}-\d{2}$/.test(full.date||"")?full.date:"";let tracks=[];(full.media||[]).forEach(d=>(d.tracks||[]).forEach(t=>tracks.push(t.title||t.recording?.title||"")));$("tracks").value=tracks.join("\n");m.textContent="自動取得できました。内容を確認して保存してください。";m.classList.add("ok")}
+catch(e){m.textContent="自動取得に失敗しました。通信状況を確認するか、手入力してください。";m.classList.add("err")}};
+$("save").onclick=()=>{let album=$("album").value.trim(),artist=$("artist").value.trim(),tracks=$("tracks").value.split("\n").map(x=>x.trim()).filter(Boolean);if(!album||!artist||!tracks.length){alert("CDタイトル・アーティスト・収録曲を入力してください。");return}let id=$("editId").value,obj={id:id?Number(id):Date.now(),barcode:$("barcode").value.trim(),album,artist,date:$("date").value,tracks};if(id){let i=db.findIndex(x=>x.id===Number(id));if(i>=0)db[i]=obj}else db.unshift(obj);saveDB();$("formBox").classList.add("hide");render()};
+$("list").onclick=e=>{let ed=e.target.closest("[data-edit]"),del=e.target.closest("[data-del]");if(ed)showForm(db.find(x=>x.id===Number(ed.dataset.edit)));if(del&&confirm("このCDを削除しますか？")){db=db.filter(x=>x.id!==Number(del.dataset.del));saveDB();render()}};
+render();
+</script>
+</body></html>
